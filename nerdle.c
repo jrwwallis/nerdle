@@ -1,9 +1,10 @@
 #include <stdio.h>
 #include <math.h>
 #include <stdlib.h>
+#include <string.h>
 
 char * expressionToParse;
-
+FILE *fp;
 
 char peek()
 {
@@ -103,6 +104,7 @@ gen_nz_digit (int level, int br_level, char * buf, int ndigits)
     
     for (i = 1; i < 10; i++) {
         buf[level] = '0' + i;
+        gen_equals(next_level, br_level, buf, 0);
         gen_digit(next_level, br_level, buf, 1);
         gen_oper(next_level, br_level, buf, 0);
         gen_squared(next_level, br_level, buf, 0);
@@ -110,7 +112,6 @@ gen_nz_digit (int level, int br_level, char * buf, int ndigits)
         if (br_level > 0) {
             gen_close(next_level, br_level, buf, 0);
         }
-        gen_equals(next_level, br_level, buf, 0);
     }
 }
 
@@ -128,8 +129,9 @@ gen_digit (int level, int br_level, char * buf, int ndigits)
 
     int next_level = level + 1;
 
-    for (i = 0; i < 10; i++) {
+    for (i = 1; i < 10; i++) {
         buf[level] = '0' + i;
+        gen_equals(next_level, br_level, buf, 0);
         gen_digit(next_level, br_level, buf, ndigits + 1);
         gen_oper(next_level, br_level, buf, 0);
         gen_squared(level +1, br_level, buf, 0);
@@ -137,8 +139,17 @@ gen_digit (int level, int br_level, char * buf, int ndigits)
         if (br_level > 0) {
             gen_close(next_level, br_level, buf, 0);
         }
-        gen_equals(next_level, br_level, buf, 0);
     }
+    buf[level] = '0';
+    gen_equals(next_level, br_level, buf, 0);
+    gen_digit(next_level, br_level, buf, ndigits + 1);
+    gen_oper(next_level, br_level, buf, 0);
+    gen_squared(level +1, br_level, buf, 0);
+    gen_cubed(next_level, br_level, buf, 0);
+    if (br_level > 0) {
+      gen_close(next_level, br_level, buf, 0);
+    }
+
 }
 
 static inline void
@@ -150,11 +161,11 @@ gen_oper (int level, int br_level, char * buf, int ndigits)
 
     int next_level = level + 1;
 
-    buf[level] = '+';
+    buf[level] = '-';
     gen_nz_digit(next_level, br_level, buf, 0);
     gen_open(next_level, br_level, buf, 0);
 
-    buf[level] = '-';
+    buf[level] = '+';
     gen_nz_digit(next_level, br_level, buf, 0);
     gen_open(next_level, br_level, buf, 0);
 
@@ -178,12 +189,12 @@ gen_squared (int level, int br_level, char * buf, int ndigits)
     int next_level = level + 1;
 
     buf[level] = 's';
+    if (level >= 3) {
+        gen_equals(next_level, br_level, buf, 0);
+    }
     gen_oper(next_level, br_level, buf, 0);
     if (br_level > 0) {
         gen_close(next_level, br_level, buf, 0);
-    }
-    if (level >= 3) {
-        gen_equals(next_level, br_level, buf, 0);
     }
 }
         
@@ -197,12 +208,12 @@ gen_cubed (int level, int br_level, char * buf, int ndigits)
     int next_level = level + 1;
 
     buf[level] = 'c';
+    if (level >= 2) {
+        gen_equals(next_level, br_level, buf, 0);
+    }
     gen_oper(next_level, br_level, buf, 0);
     if (br_level > 0) {
         gen_close(next_level, br_level, buf, 0);
-    }
-    if (level >= 2) {
-        gen_equals(next_level, br_level, buf, 0);
     }
 }
         
@@ -232,13 +243,13 @@ gen_close (int level, int br_level, char * buf, int ndigits)
 
     buf[level] = ')';
     br_level--;
+    gen_equals(next_level, br_level, buf, 0);
     gen_oper(next_level, br_level, buf, 0);
     gen_squared(next_level, br_level, buf, 0);
     gen_cubed(next_level, br_level, buf, 0);
     if (br_level > 0) {
         gen_close(next_level, br_level, buf, 0);
     }
-    gen_equals(next_level, br_level, buf, 0);
 }
 
 static inline int
@@ -264,7 +275,6 @@ gen_equals (int level, int br_level, char * buf, int ndigits)
     double result;
     double int_part;
     double frac_part;
-    char nerdle[11];
     
     if (br_level > 0) {
         return;
@@ -277,8 +287,21 @@ gen_equals (int level, int br_level, char * buf, int ndigits)
         int rhs = (int)int_part;
         if (rhs >= 0) {
             if (level + int_len(rhs) == 9) {
-	        snprintf(nerdle, sizeof(nerdle), "%s=%d\n", buf, rhs);
-	        puts(nerdle);
+	        char out_str[20];
+		char *ptr = out_str;
+		char tmp_str[20];
+		strcpy(out_str, buf);
+		while (NULL != (ptr = strchr(ptr, 's'))) {
+		    strcpy(tmp_str, ptr + 1);
+		    sprintf(ptr, "²%s", tmp_str);
+		}
+		ptr = out_str;
+		while (NULL != (ptr = strchr(ptr, 'c'))) {
+		    strcpy(tmp_str, ptr + 1);
+		    sprintf(ptr, "³%s", tmp_str);
+		}
+			   
+	        fprintf(fp, "%s=%d\n", out_str, rhs);
             }
         }
     }
@@ -287,7 +310,9 @@ gen_equals (int level, int br_level, char * buf, int ndigits)
 int
 main (int argc, char ** argv)
 {
-    char buffer[11] = "";
+    fp = fopen("nerdle.txt", "w");
+    char buffer[20] = "";
     gen_nz_digit(0, 0, buffer, 0);
     gen_open(0, 0, buffer, 0);
+    fclose(fp);
 }
