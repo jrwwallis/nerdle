@@ -1,7 +1,14 @@
 #include <stdio.h>
+#include <stdint.h>
+#include <inttypes.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
+
+#ifdef NSEC_DIFF
+static uint64_t prev;
+#endif /* NSEC_DIFF */
 
 char * expressionToParse;
 FILE *fp;
@@ -238,7 +245,6 @@ gen_oper (int level, int br_level, char * buf, int is_float)
     gen_open(next_level, br_level, buf, 1);
 }
 
-
 static inline void
 gen_squared (int level, int br_level, char * buf, int ndigits, int is_float)
 {
@@ -356,7 +362,7 @@ gen_equals (int level, int br_level, char * buf, int is_float)
     }
     buf[level] = '\0';
     expressionToParse = buf;
-    if (1 || is_float) {
+    if (is_float) {
         resultd = expressiond();
 	frac_part = modf(resultd, &int_part);
 	if (frac_part != 0) {
@@ -368,7 +374,7 @@ gen_equals (int level, int br_level, char * buf, int is_float)
     }
     if (rhs >= 0) {
         if (level + int_len(rhs) == 9) {
-	  #if 0
+            #if 0
 	    char out_str[20];
 	    char *ptr = out_str;
 	    char tmp_str[20];
@@ -384,17 +390,32 @@ gen_equals (int level, int br_level, char * buf, int is_float)
 	    }
 	    fprintf(fp, "%s=%d\n", out_str, rhs);
 	     #endif
-	    
-	      fprintf(fp, "%s=%d\n", buf, rhs);
+#ifdef NSEC_DIFF
+            struct timespec ts;
+            static uint64_t now;
+            clock_gettime(CLOCK_REALTIME, &ts);
+            now = (ts.tv_sec * 1000000000) + ts.tv_nsec;
+            fprintf(fp, "%" PRIu64 ", %s=%d\n", now - prev, buf, rhs);
+            prev = now;
+#else
+            fprintf(fp, "%s=%d\n", buf, rhs);
+#endif /* NSEC_DIFF */
 	}
     }
 }
+
 
 int
 main (int argc, char ** argv)
 {
     fp = fopen("nerdle.txt", "w");
     char buffer[20] = "";
+    
+#ifdef NSEC_DIFF   
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    prev = (ts.tv_sec * 1000000000) + ts.tv_nsec;
+#endif /* NSEC_DIFF */
     gen_nz_digit(0, 0, buffer, 0);
     gen_open(0, 0, buffer, 0);
     fclose(fp);
